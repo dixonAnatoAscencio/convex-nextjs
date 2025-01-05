@@ -11,4 +11,9 @@ export default defineSchema({
     userId: v.id("users"),
     body: v.string(),
   }),
+
+  notes: defineTable({
+    userId: v.id("users"),
+    note: v.string(),
+  })
 });
