@@ -1,9 +1,10 @@
 import { v } from "convex/values";
-import { internalAction, internalMutation, mutation, query } from "./_generated/server";
+import { internalAction, internalMutation, mutation, MutationCtx, query, QueryCtx } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 
 import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter";
 import { components, internal } from "./_generated/api";
+import { Id } from "./_generated/dataModel";
 
 const rateLimiter = new RateLimiter(components.rateLimiter, {
     createNote: { kind: "fixed window", rate: 1, period: MINUTE },
@@ -51,9 +52,42 @@ export const getNotes = query({
             throw new Error("Unauthorized")
         }
 
-        return await ctx.db.query("notes").collect()
+        return await ctx.db.query("notes").withIndex("by_userId", (q) => q.eq("userId", userId)).collect()
     },
 })
+
+async function isNoteOwner(ctx: QueryCtx | MutationCtx, noteId: Id<"notes">) {
+    const userId = await getAuthUserId(ctx)
+    if (!userId) {
+        return null
+    }
+
+    const note = await ctx.db.get(noteId)
+    if (!note || note.userId !== userId) {
+        return null
+    }
+
+    return note
+
+}
+
+
+export const deleteNote = mutation({
+    args: {
+        noteId: v.id("notes"),
+    },
+    handler: async (ctx, args) => {
+        console.log(`Attempting to delete note with ID: ${args.noteId}`);
+        
+        const note = await isNoteOwner(ctx, args.noteId);
+        if (!note) {
+            throw new Error("Unauthorized");
+        }
+
+        await ctx.db.delete(note._id);
+        console.log(`Note with ID: ${args.noteId} has been deleted`);
+    }
+});
 
 //Internal mutation
 export const deleteAll = internalMutation({
